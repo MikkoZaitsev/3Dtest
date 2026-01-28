@@ -40,64 +40,51 @@
 
     const status = document.getElementById("status");
 
-    // ✅ GLB pitää olla samassa kansiossa kuin tämä viewer.html (repo root)
+    // ✅ Malli repon rootissa
     const MODEL_URL = "./arcadeforweb-compressed.glb";
 
-    // Debug: kerro mitä URL:ia oikeasti haetaan
-    status.textContent =
-      "Viewer loaded ✅\n" +
-      "Model URL (relative): " + MODEL_URL + "\n" +
-      "Page URL: " + location.href + "\n\n" +
-      "Loading model…";
+    // muodostetaan absoluuttinen debug-URL
+    const modelAbs = new URL(MODEL_URL, location.href).toString();
+    status.textContent = "Boot ✅\nLoading model:\n" + modelAbs;
 
-    // --- Three.js setup
     const scene = new THREE.Scene();
 
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 2000);
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.01, 2000);
     camera.position.set(1.2, 0.9, 1.6);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     document.body.appendChild(renderer.domElement);
 
-    // Valot
     scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.15));
     const key = new THREE.DirectionalLight(0xffffff, 1.6);
     key.position.set(3, 4, 2);
     scene.add(key);
 
-    // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
-    controls.minDistance = 0.25;
-    controls.maxDistance = 20;
 
-    // --- Load model
     const loader = new GLTFLoader();
-
     loader.load(
       MODEL_URL,
       (gltf) => {
+        status.textContent = "Loaded ✅";
         const model = gltf.scene;
         scene.add(model);
 
-        // Keskitys
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
         model.position.sub(center);
 
-        // Kamera fit
         const maxDim = Math.max(size.x, size.y, size.z);
         const fitDist = maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360));
         camera.position.set(0, maxDim * 0.15, fitDist * 1.25);
-
-        // Päivitä clipit (tärkeä isoissa malleissa)
         camera.near = Math.max(0.01, fitDist / 200);
         camera.far  = fitDist * 200;
         camera.updateProjectionMatrix();
@@ -105,53 +92,38 @@
         controls.target.set(0, 0, 0);
         controls.update();
 
-        status.textContent =
-          "Loaded ✅\n" +
-          "Bounds: " + JSON.stringify({ x: size.x.toFixed(3), y: size.y.toFixed(3), z: size.z.toFixed(3) }) + "\n" +
-          "Camera near/far: " + camera.near.toFixed(3) + " / " + camera.far.toFixed(1) + "\n\n" +
-          "Jos et näe mallia, se on silloin käytännössä valaistus/materialeissa – mutta loader toimii.";
-
-        // Piilota status 1s päästä
-        setTimeout(() => status.remove(), 1200);
+        setTimeout(() => status.remove(), 1000);
       },
       (xhr) => {
-        // progress
         if (xhr && xhr.total) {
           const p = (xhr.loaded / xhr.total) * 100;
-          status.textContent =
-            "Loading model… " + p.toFixed(0) + "%\n" +
-            "Hint: jos jää 0% ja sitten error → yleensä 404/polku.";
+          status.textContent = "Loading… " + p.toFixed(0) + "%\n" + modelAbs;
         } else {
-          status.textContent = "Loading model…";
+          status.textContent = "Loading…\n" + modelAbs;
         }
       },
-      (err) => {
-        console.error("GLB load error:", err);
-
-        // Näytä ruudulla oikea virhe
+      async (err) => {
+        console.error(err);
         status.textContent =
           "Load failed ❌\n\n" +
-          "1) Onko tiedosto NIMELLÄ arcadeforweb-compressed.glb repon ROOTissa?\n" +
-          "2) Aukeaako tämä suoraan selaimessa?\n" +
-          "   " + location.origin + location.pathname.replace(/\\/[^\\/]*$/, "/") + "arcadeforweb-compressed.glb\n\n" +
-          "Virhe:\n" + (err?.message || String(err));
+          "Testaa tämä URL suoraan selaimessa:\n" + modelAbs + "\n\n" +
+          "Jos se antaa 404 → tiedoston nimi/polku väärin.\n" +
+          "Jos se latautuu → MIME/response ongelma.\n\n" +
+          (err?.message || String(err));
       }
     );
 
-    // Resize
-    window.addEventListener("resize", () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth/innerHeight;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(innerWidth, innerHeight);
     });
 
-    // Render loop
-    function animate() {
+    (function animate(){
       controls.update();
       renderer.render(scene, camera);
       requestAnimationFrame(animate);
-    }
-    animate();
+    })();
   </script>
 </body>
 </html>
