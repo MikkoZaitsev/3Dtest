@@ -5,44 +5,56 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>3Dtest — Viewer</title>
   <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: #0b0c10;
-      overflow: hidden;
+    html, body { height: 100%; margin: 0; background: #0b0c10; overflow: hidden; }
+    canvas { display:block; }
+    #status{
+      position: fixed; left: 12px; top: 12px; right: 12px;
+      color: rgba(255,255,255,.92);
+      background: rgba(0,0,0,.45);
+      padding: 10px 12px; border-radius: 12px;
+      font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      backdrop-filter: blur(8px);
+      white-space: pre-wrap;
+      z-index: 9999;
     }
-    canvas { display: block; }
-    .hint {
-      position: fixed;
-      left: 12px;
-      bottom: 12px;
-      color: rgba(255,255,255,.75);
-      background: rgba(0,0,0,.4);
-      padding: 8px 10px;
-      border-radius: 10px;
-      font: 12px system-ui, -apple-system, Segoe UI, Roboto;
+    .hint{
+      position: fixed; left: 12px; bottom: 12px;
+      color: rgba(255,255,255,.72);
+      background: rgba(0,0,0,.35);
+      padding: 10px 12px; border-radius: 12px;
+      font: 12px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      backdrop-filter: blur(8px);
+      pointer-events: none;
+      z-index: 9999;
     }
   </style>
 </head>
 <body>
-  <div class="hint">Drag = rotate · Scroll = zoom</div>
+  <div id="status">Boot…</div>
+  <div class="hint">Drag = rotate · Scroll = zoom · Right-drag = pan</div>
 
   <script type="module">
     import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
     import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
     import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 
-    // TÄRKEÄ: malli samassa repossa
+    const status = document.getElementById("status");
+
+    // ✅ GLB pitää olla samassa kansiossa kuin tämä viewer.html (repo root)
     const MODEL_URL = "./arcadeforweb-compressed.glb";
 
+    // Debug: kerro mitä URL:ia oikeasti haetaan
+    status.textContent =
+      "Viewer loaded ✅\n" +
+      "Model URL (relative): " + MODEL_URL + "\n" +
+      "Page URL: " + location.href + "\n\n" +
+      "Loading model…";
+
+    // --- Three.js setup
     const scene = new THREE.Scene();
 
-    const camera = new THREE.PerspectiveCamera(
-      45,
-      window.innerWidth / window.innerHeight,
-      0.01,
-      100
-    );
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 2000);
+    camera.position.set(1.2, 0.9, 1.6);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -52,15 +64,22 @@
     renderer.toneMappingExposure = 1.0;
     document.body.appendChild(renderer.domElement);
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.1));
-    const light = new THREE.DirectionalLight(0xffffff, 1.4);
-    light.position.set(3, 4, 2);
-    scene.add(light);
+    // Valot
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.15));
+    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    key.position.set(3, 4, 2);
+    scene.add(key);
 
+    // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.minDistance = 0.25;
+    controls.maxDistance = 20;
 
+    // --- Load model
     const loader = new GLTFLoader();
+
     loader.load(
       MODEL_URL,
       (gltf) => {
@@ -69,30 +88,64 @@
 
         // Keskitys
         const box = new THREE.Box3().setFromObject(model);
-        const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
         model.position.sub(center);
 
+        // Kamera fit
         const maxDim = Math.max(size.x, size.y, size.z);
         const fitDist = maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360));
         camera.position.set(0, maxDim * 0.15, fitDist * 1.25);
 
+        // Päivitä clipit (tärkeä isoissa malleissa)
+        camera.near = Math.max(0.01, fitDist / 200);
+        camera.far  = fitDist * 200;
+        camera.updateProjectionMatrix();
+
         controls.target.set(0, 0, 0);
         controls.update();
+
+        status.textContent =
+          "Loaded ✅\n" +
+          "Bounds: " + JSON.stringify({ x: size.x.toFixed(3), y: size.y.toFixed(3), z: size.z.toFixed(3) }) + "\n" +
+          "Camera near/far: " + camera.near.toFixed(3) + " / " + camera.far.toFixed(1) + "\n\n" +
+          "Jos et näe mallia, se on silloin käytännössä valaistus/materialeissa – mutta loader toimii.";
+
+        // Piilota status 1s päästä
+        setTimeout(() => status.remove(), 1200);
       },
-      undefined,
-      (error) => {
-        alert("GLB ei latautunut. Tarkista tiedoston nimi.");
-        console.error(error);
+      (xhr) => {
+        // progress
+        if (xhr && xhr.total) {
+          const p = (xhr.loaded / xhr.total) * 100;
+          status.textContent =
+            "Loading model… " + p.toFixed(0) + "%\n" +
+            "Hint: jos jää 0% ja sitten error → yleensä 404/polku.";
+        } else {
+          status.textContent = "Loading model…";
+        }
+      },
+      (err) => {
+        console.error("GLB load error:", err);
+
+        // Näytä ruudulla oikea virhe
+        status.textContent =
+          "Load failed ❌\n\n" +
+          "1) Onko tiedosto NIMELLÄ arcadeforweb-compressed.glb repon ROOTissa?\n" +
+          "2) Aukeaako tämä suoraan selaimessa?\n" +
+          "   " + location.origin + location.pathname.replace(/\\/[^\\/]*$/, "/") + "arcadeforweb-compressed.glb\n\n" +
+          "Virhe:\n" + (err?.message || String(err));
       }
     );
 
+    // Resize
     window.addEventListener("resize", () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
+    // Render loop
     function animate() {
       controls.update();
       renderer.render(scene, camera);
