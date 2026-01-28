@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Loistopixel 3D Viewer</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #0b0c10; overflow: hidden; }
+    canvas { display:block; }
+  </style>
+</head>
+<body>
+<script type="module">
+  import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+  import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+  import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+
+  const MODEL_URL =
+    "https://loistopixel.com/wp-content/uploads/2026/01/arcadeforweb.glb";
+
+  const scene = new THREE.Scene();
+
+  const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.01, 100);
+  camera.position.set(1.2, 0.9, 1.6);
+
+  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  document.body.appendChild(renderer.domElement);
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.0));
+  const key = new THREE.DirectionalLight(0xffffff, 1.2);
+  key.position.set(3,4,2);
+  scene.add(key);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  const loader = new GLTFLoader();
+  loader.load(MODEL_URL, (gltf) => {
+    const model = gltf.scene;
+    scene.add(model);
+
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.sub(center);
+
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fitDist = maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360));
+    camera.position.set(0, maxDim * 0.15, fitDist * 1.25);
+
+    controls.target.set(0,0,0);
+    controls.update();
+  });
+
+  addEventListener("resize", () => {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  (function animate(){
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+  })();
+</script>
+</body>
+</html>
